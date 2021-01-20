@@ -96,7 +96,7 @@ class EKF2 final : public ModuleParams, public px4::ScheduledWorkItem
 {
 public:
 	EKF2() = delete;
-	EKF2(int instance, const px4::wq_config_t &config, int imu, int mag, bool replay_mode);
+	EKF2(bool multi_mode, const px4::wq_config_t &config, bool replay_mode);
 	~EKF2() override;
 
 	/** @see ModuleBase */
@@ -117,6 +117,10 @@ public:
 	static void lock_module() { pthread_mutex_lock(&ekf2_module_mutex); }
 	static bool trylock_module() { return (pthread_mutex_trylock(&ekf2_module_mutex) == 0); }
 	static void unlock_module() { pthread_mutex_unlock(&ekf2_module_mutex); }
+
+	bool multi_init(int imu, int mag);
+
+	int instance() const { return _instance; }
 
 private:
 	void Run() override;
@@ -158,7 +162,7 @@ private:
 
 	const bool _replay_mode{false};			///< true when we use replay data from a log
 	const bool _multi_mode;
-	const int _instance;
+	int _instance{0};
 
 	px4::atomic_bool _task_should_exit{false};
 
@@ -204,6 +208,8 @@ private:
 
 	float _airspeed_scale_factor{1.0f}; ///< scale factor correction applied to airspeed measurements
 
+	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
+
 	uORB::Subscription _airdata_sub{ORB_ID(vehicle_air_data)};
 	uORB::Subscription _airspeed_sub{ORB_ID(airspeed)};
 	uORB::Subscription _distance_sensor_sub{ORB_ID(distance_sensor)};
@@ -211,7 +217,6 @@ private:
 	uORB::Subscription _landing_target_pose_sub{ORB_ID(landing_target_pose)};
 	uORB::Subscription _magnetometer_sub{ORB_ID(vehicle_magnetometer)};
 	uORB::Subscription _optical_flow_sub{ORB_ID(optical_flow)};
-	uORB::Subscription _parameter_update_sub{ORB_ID(parameter_update)};
 	uORB::Subscription _sensor_selection_sub{ORB_ID(sensor_selection)};
 	uORB::Subscription _status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_gps_position_sub{ORB_ID(vehicle_gps_position)};
@@ -384,6 +389,8 @@ private:
 		_param_ekf2_rng_a_hmax,	///< maximum allowed absolute altitude (AGL) for range aid (m)
 		(ParamExtFloat<px4::params::EKF2_RNG_A_IGATE>)
 		_param_ekf2_rng_a_igate,	///< gate size used for innovation consistency checks for range aid fusion (STD)
+		(ParamExtFloat<px4::params::EKF2_RNG_QLTY_T>)
+		_param_ekf2_rng_qlty_t, ///< Minimum duration during which the reported range finder signal quality needs to be non-zero in order to be declared valid (s)
 
 		// vision estimate fusion
 		(ParamInt<px4::params::EKF2_EV_NOISE_MD>)
@@ -488,6 +495,8 @@ private:
 
 		(ParamFloat<px4::params::EKF2_REQ_GPS_H>) _param_ekf2_req_gps_h, ///< Required GPS health time
 		(ParamExtInt<px4::params::EKF2_MAG_CHECK>) _param_ekf2_mag_check, ///< Mag field strength check
+		(ParamExtInt<px4::params::EKF2_SYNT_MAG_Z>)
+		_param_ekf2_synthetic_mag_z, ///< Enables the use of a synthetic value for the Z axis of the magnetometer calculated from the 3D magnetic field vector at the location of the drone.
 
 		// Used by EKF-GSF experimental yaw estimator
 		(ParamExtFloat<px4::params::EKF2_GSF_TAS>)
